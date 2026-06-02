@@ -1,3 +1,4 @@
+import faceShoulderGuide from "../assets/guides/face-shoulder-guide.PNG";
 import { useRef, useState } from "react";
 
 export default function RecordPage({ onBack }) {
@@ -135,8 +136,12 @@ export default function RecordPage({ onBack }) {
               />
 
               <div className="guide-overlay">
-                <div className="face-guide" />
-                <p className="guide-text">얼굴을 이 안에 맞춰 주세요</p>
+                <img
+                  src={faceShoulderGuide}
+                  className="guide-image"
+                  alt=""
+                />
+                <p className="guide-text">얼굴과 어깨를 가이드에 맞춰 주세요</p>
               </div>
             </>
           ) : (
