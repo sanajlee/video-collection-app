@@ -229,7 +229,7 @@ button {
   display: flex;
   justify-content: center;
   align-items: center;
-  transform: translateY(12%);
+  transform: translateY(24%);
   pointer-events: none;
 }
 
