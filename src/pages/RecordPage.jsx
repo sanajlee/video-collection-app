@@ -132,7 +132,7 @@ export default function RecordPage({ onBack }) {
                 autoPlay
                 muted
                 playsInline
-                className="camera-video"
+                className="camera-video camera-video-live"
               />
 
               <div className="guide-overlay">

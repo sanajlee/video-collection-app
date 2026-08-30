@@ -103,7 +103,7 @@ button {
 }
 
 .instruction-panel {
-  height: 50dvh;
+  height: 35dvh;
   padding: 20px;
   background: white;
   display: flex;
@@ -113,7 +113,7 @@ button {
 }
 
 .camera-panel {
-  height: 50dvh;
+  height: 65dvh;
   background: #111;
   display: flex;
   flex-direction: column;
@@ -210,7 +210,15 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
+
+  /* 화면에 보여주는 영역을 조금 아래쪽으로 */
+  object-position: center 65%;
+
   display: block;
+}
+
+.camera-video-live {
+  transform: scaleX(-1);
 }
 
 /* camera guide overlay */
@@ -221,6 +229,7 @@ button {
   display: flex;
   justify-content: center;
   align-items: center;
+  transform: translateY(8%);
   pointer-events: none;
 }
 
