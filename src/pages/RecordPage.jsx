@@ -1,6 +1,22 @@
 import faceShoulderGuide from "../assets/guides/face-shoulder-guide.PNG";
 import { useRef, useState } from "react";
 
+function getSupportedMimeType() {
+  const candidates = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/mp4;codecs=avc1,mp4a.40.2",
+    "video/webm",
+    "video/mp4",
+  ];
+
+  return (
+    candidates.find((type) =>
+      MediaRecorder.isTypeSupported(type)
+    ) || ""
+  );
+}
+
 export default function RecordPage({ onBack }) {
   const videoRef = useRef(null);
   const previewRef = useRef(null);
@@ -12,16 +28,62 @@ export default function RecordPage({ onBack }) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordedUrl, setRecordedUrl] = useState(null);
 
+  const [recordedBlob, setRecordedBlob] = useState(null);
+  const [recordingMetadata, setRecordingMetadata] = useState(null);
+  const [mimeType, setMimeType] = useState("");
+
   async function startCamera() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: "user",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 },
         },
-        audio: true,
+        audio: {
+          channelCount: 1,
+          sampleRate: { ideal: 48000 },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
       });
 
       streamRef.current = stream;
+
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTrack = stream.getAudioTracks()[0];
+
+      const selectedMimeType = getSupportedMimeType();
+
+      setMimeType(selectedMimeType);
+
+      setRecordingMetadata({
+        createdAt: new Date().toISOString(),
+
+        video: videoTrack
+          ? videoTrack.getSettings()
+          : null,
+
+        audio: audioTrack
+          ? audioTrack.getSettings()
+          : null,
+
+        requested: {
+          width: 1920,
+          height: 1080,
+          frameRate: 30,
+          audioSampleRate: 48000,
+        },
+
+        mimeType: selectedMimeType,
+      });
+
+      console.log("Video settings:", videoTrack?.getSettings());
+      console.log("Audio settings:", audioTrack?.getSettings());
+      console.log("MIME type:", selectedMimeType);
+
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -39,9 +101,19 @@ export default function RecordPage({ onBack }) {
 
     chunksRef.current = [];
 
-    const recorder = new MediaRecorder(streamRef.current, {
-      mimeType: "video/webm",
-    });
+    const options = {
+      videoBitsPerSecond: 5_000_000,
+      audioBitsPerSecond: 128_000,
+    };
+
+    if (mimeType) {
+      options.mimeType = mimeType;
+    }
+
+    const recorder = new MediaRecorder(
+      streamRef.current,
+      options
+    );
 
     recorderRef.current = recorder;
 
@@ -52,9 +124,16 @@ export default function RecordPage({ onBack }) {
     };
 
     recorder.onstop = () => {
+      const actualMimeType =
+        recorder.mimeType ||
+        mimeType ||
+        "video/webm";
+
       const blob = new Blob(chunksRef.current, {
-        type: "video/webm",
+        type: actualMimeType,
       });
+
+      setRecordedBlob(blob);
 
       const url = URL.createObjectURL(blob);
       setRecordedUrl(url);
@@ -62,6 +141,15 @@ export default function RecordPage({ onBack }) {
       if (previewRef.current) {
         previewRef.current.src = url;
       }
+
+      setRecordingMetadata((prev) => ({
+        ...prev,
+        finishedAt: new Date().toISOString(),
+        mimeType: actualMimeType,
+        fileSizeBytes: blob.size,
+      }));
+
+      console.log("Recorded blob:", blob);
     };
 
     recorder.start();
@@ -81,12 +169,58 @@ export default function RecordPage({ onBack }) {
       URL.revokeObjectURL(recordedUrl);
     }
 
+    setRecordedBlob(null);
+    setRecordingMetadata((prev) => ({
+      ...prev,
+      finishedAt: null,
+      fileSizeBytes: null,
+    }));
+
     setRecordedUrl(null);
     chunksRef.current = [];
   }
 
+  function getFileExtension(type) {
+    if (type.includes("mp4")) return "mp4";
+    return "webm";
+  }
+
   async function submitVideo() {
-    alert("나중에 여기에 Supabase 업로드 로직을 붙이면 됩니다.");
+    if (!recordedBlob) {
+      alert("녹화된 영상이 없습니다.");
+      return;
+    }
+
+    const extension = getFileExtension(
+      recordedBlob.type || mimeType
+    );
+
+    // video download
+    const videoUrl = URL.createObjectURL(recordedBlob);
+    const videoAnchor = document.createElement("a");
+
+    videoAnchor.href = videoUrl;
+    videoAnchor.download = `pilot_test.${extension}`;
+    videoAnchor.click();
+
+    URL.revokeObjectURL(videoUrl);
+
+    // metadata download
+    const metadataBlob = new Blob(
+      [JSON.stringify(recordingMetadata, null, 2)],
+      {
+        type: "application/json",
+      }
+    );
+
+    const metadataUrl = URL.createObjectURL(metadataBlob);
+    const metadataAnchor = document.createElement("a");
+
+    metadataAnchor.href = metadataUrl;
+    metadataAnchor.download = "pilot_test.json";
+    metadataAnchor.click();
+
+    URL.revokeObjectURL(metadataUrl);
   }
 
   return (
