@@ -1,0 +1,38 @@
+{
+  "createdAt": "2026-08-30T04:30:48.128Z",
+  "video": {
+    "aspectRatio": 1.7777777777777777,
+    "backgroundBlur": false,
+    "deviceId": "CC2DE4BAF604F7372A1607566905076C07C172BF",
+    "facingMode": "user",
+    "frameRate": 30,
+    "groupId": "2F9A191F66DEA8864EF5CC3226E54620CEEFC686",
+    "height": 1080,
+    "powerEfficient": false,
+    "whiteBalanceMode": "continuous",
+    "width": 1920,
+    "zoom": 1
+  },
+  "audio": {
+    "deviceId": "433F0AB90D32AEA09763247B3E669D2AEEA39106",
+    "echoCancellation": false,
+    "groupId": "1D659B4B6D685A8F213B3447CF3550C3D0293BE6",
+    "sampleRate": 48000,
+    "volume": 1
+  },
+  "requested": {
+    "width": 1920,
+    "height": 1080,
+    "frameRate": 30,
+    "audioSampleRate": 48000
+  },
+  "mimeType": "video/webm; codecs=vp09.00.10.08,opus",
+  "finishedAt": "2026-08-30T04:30:56.070Z",
+  "fileSizeBytes": 3776802,
+  "file": {
+    "name": "pilot_test.webm",
+    "type": "video/webm; codecs=vp09.00.10.08,opus",
+    "sizeBytes": 3776802
+  },
+  "savedAt": "2026-08-30T04:31:01.132Z"
+}

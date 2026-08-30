@@ -203,54 +203,55 @@ export default function RecordPage({ onBack }) {
     }, 1000);
   }
 
-  function submitVideo() {
+  async function submitVideo() {
     if (!recordedBlob) {
       alert("녹화된 영상이 없습니다.");
       return;
     }
 
-    console.log("recordingMetadata:", recordingMetadata);
+    try {
+      const formData = new FormData();
 
-    const extension = getFileExtension(
-      recordedBlob.type || mimeType
-    );
+      const extension =
+        recordedBlob.type?.includes("mp4")
+          ? "mp4"
+          : "webm";
 
-    // 1. 영상 다운로드
-    downloadBlob(
-      recordedBlob,
-      `pilot_test.${extension}`
-    );
-
-    // 2. metadata JSON 생성
-    const metadata = {
-      ...(recordingMetadata || {}),
-
-      file: {
-        name: `pilot_test.${extension}`,
-        type: recordedBlob.type,
-        sizeBytes: recordedBlob.size,
-      },
-
-      savedAt: new Date().toISOString(),
-    };
-
-    const metadataBlob = new Blob(
-      [JSON.stringify(metadata, null, 2)],
-      {
-        type: "application/json;charset=utf-8",
-      }
-    );
-
-    // 모바일 브라우저가 연속 다운로드를 씹는 경우가 있어서
-    // 약간의 간격을 둠
-    setTimeout(() => {
-      downloadBlob(
-        metadataBlob,
-        "pilot_test.json"
+      formData.append(
+        "video",
+        recordedBlob,
+        `recording.${extension}`
       );
-    }, 500);
-  }
 
+      formData.append(
+        "metadata",
+        JSON.stringify(recordingMetadata || {})
+      );
+
+      const response = await fetch(
+        "http://192.168.45.148:8000/api/recordings",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Upload failed: ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+
+      console.log("Upload result:", result);
+
+      alert("업로드 완료!");
+    } catch (error) {
+      console.error(error);
+      alert("업로드에 실패했습니다.");
+    }
+  }
 
   function downloadVideo() {
     if (!recordedBlob) return;
