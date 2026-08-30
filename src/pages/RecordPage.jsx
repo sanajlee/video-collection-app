@@ -229,7 +229,8 @@ export default function RecordPage({ onBack }) {
       );
 
       const response = await fetch(
-        "http://192.168.45.148:8000/api/recordings",
+        // "http://192.168.45.148:8000/api/recordings",
+        "/api/recordings",
         {
           method: "POST",
           body: formData,
