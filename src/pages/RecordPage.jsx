@@ -191,27 +191,28 @@ export default function RecordPage({ onBack }) {
       return;
     }
 
-    const extension = getFileExtension(
-      recordedBlob.type || mimeType
-    );
+    console.log("recordedBlob:", recordedBlob);
+    console.log("blob size:", recordedBlob.size);
+    console.log("blob type:", recordedBlob.type);
 
-    // video download
+    const extension =
+      recordedBlob.type.includes("mp4") ? "mp4" : "webm";
+
     const videoUrl = URL.createObjectURL(recordedBlob);
-    const videoAnchor = document.createElement("a");
 
-    videoAnchor.href = videoUrl;
-    videoAnchor.download = `pilot_test.${extension}`;
-    videoAnchor.click();
+    const a = document.createElement("a");
+    a.href = videoUrl;
+    a.download = `pilot_test.${extension}`;
 
-    URL.revokeObjectURL(videoUrl);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
 
-    // metadata download
-    const metadataBlob = new Blob(
-      [JSON.stringify(recordingMetadata, null, 2)],
-      {
-        type: "application/json",
-      }
-    );
+    // 바로 revoke하지 말고 약간 뒤에
+    setTimeout(() => {
+      URL.revokeObjectURL(videoUrl);
+    }, 1000);
+  }
 
     const metadataUrl = URL.createObjectURL(metadataBlob);
     const metadataAnchor = document.createElement("a");
