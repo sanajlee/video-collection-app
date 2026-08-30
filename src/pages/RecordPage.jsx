@@ -214,15 +214,6 @@ export default function RecordPage({ onBack }) {
     }, 1000);
   }
 
-    const metadataUrl = URL.createObjectURL(metadataBlob);
-    const metadataAnchor = document.createElement("a");
-
-    metadataAnchor.href = metadataUrl;
-    metadataAnchor.download = "pilot_test.json";
-    metadataAnchor.click();
-
-    URL.revokeObjectURL(metadataUrl);
-  }
 
   return (
     <main className="record-page">
