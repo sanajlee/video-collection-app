@@ -247,7 +247,7 @@ button {
   position: absolute;
   bottom: 18px;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-70%);
   white-space: nowrap;
   color: white;
   background: rgba(0, 0, 0, 0.5);
