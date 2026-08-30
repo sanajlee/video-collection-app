@@ -180,40 +180,117 @@ export default function RecordPage({ onBack }) {
     chunksRef.current = [];
   }
 
+
   function getFileExtension(type) {
-    if (type.includes("mp4")) return "mp4";
+    if (type?.includes("mp4")) return "mp4";
     return "webm";
   }
 
-  async function submitVideo() {
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+
+    anchor.href = url;
+    anchor.download = filename;
+
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    // click 직후 revoke하면 모바일에서 실패할 수 있어서 약간 늦춤
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
+  }
+
+  function submitVideo() {
     if (!recordedBlob) {
       alert("녹화된 영상이 없습니다.");
       return;
     }
 
-    console.log("recordedBlob:", recordedBlob);
-    console.log("blob size:", recordedBlob.size);
-    console.log("blob type:", recordedBlob.type);
+    console.log("recordingMetadata:", recordingMetadata);
 
-    const extension =
-      recordedBlob.type.includes("mp4") ? "mp4" : "webm";
+    const extension = getFileExtension(
+      recordedBlob.type || mimeType
+    );
 
-    const videoUrl = URL.createObjectURL(recordedBlob);
+    // 1. 영상 다운로드
+    downloadBlob(
+      recordedBlob,
+      `pilot_test.${extension}`
+    );
 
-    const a = document.createElement("a");
-    a.href = videoUrl;
-    a.download = `pilot_test.${extension}`;
+    // 2. metadata JSON 생성
+    const metadata = {
+      ...(recordingMetadata || {}),
 
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+      file: {
+        name: `pilot_test.${extension}`,
+        type: recordedBlob.type,
+        sizeBytes: recordedBlob.size,
+      },
 
-    // 바로 revoke하지 말고 약간 뒤에
+      savedAt: new Date().toISOString(),
+    };
+
+    const metadataBlob = new Blob(
+      [JSON.stringify(metadata, null, 2)],
+      {
+        type: "application/json;charset=utf-8",
+      }
+    );
+
+    // 모바일 브라우저가 연속 다운로드를 씹는 경우가 있어서
+    // 약간의 간격을 둠
     setTimeout(() => {
-      URL.revokeObjectURL(videoUrl);
-    }, 1000);
+      downloadBlob(
+        metadataBlob,
+        "pilot_test.json"
+      );
+    }, 500);
   }
 
+
+  function downloadVideo() {
+    if (!recordedBlob) return;
+
+    const extension = getFileExtension(
+      recordedBlob.type || mimeType
+    );
+
+    downloadBlob(
+      recordedBlob,
+      `pilot_test.${extension}`
+    );
+  }
+
+  function downloadMetadata() {
+    const extension = getFileExtension(
+      recordedBlob?.type || mimeType
+    );
+
+    const metadata = {
+      ...(recordingMetadata || {}),
+      file: recordedBlob
+        ? {
+            name: `pilot_test.${extension}`,
+            type: recordedBlob.type,
+            sizeBytes: recordedBlob.size,
+          }
+        : null,
+      savedAt: new Date().toISOString(),
+    };
+
+    const blob = new Blob(
+      [JSON.stringify(metadata, null, 2)],
+      {
+        type: "application/json;charset=utf-8",
+      }
+    );
+
+    downloadBlob(blob, "pilot_test.json");
+  }
 
   return (
     <main className="record-page">
@@ -307,6 +384,14 @@ export default function RecordPage({ onBack }) {
               </button>
               <button className="primary-button" onClick={submitVideo}>
                 제출하기
+              </button>
+
+              <button onClick={downloadVideo}>
+                영상 다운로드
+              </button>
+
+              <button onClick={downloadMetadata}>
+                메타데이터 다운로드
               </button>
             </>
           )}
