@@ -40,12 +40,33 @@ async def upload_recording(
             detail="Invalid metadata JSON",
         )
 
+
+    participant_id = metadata_dict.get("participantId", "unknown")
+
+    task_id = (
+        metadata_dict
+        .get("task", {})
+        .get("id", "unknown")
+    )
+
+    item_id = (
+        metadata_dict
+        .get("item", {})
+        .get("id", "unknown")
+    )
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+   
+    base_name = (
+        f"{participant_id}_"
+        f"{item_id}_"
+        f"{timestamp}"
+    )
 
     # pilot 단계에서는 임시 filename
     extension = Path(video.filename or "").suffix or ".webm"
 
-    base_name = f"pilot_{timestamp}"
+    # base_name = f"pilot_{timestamp}"
 
     video_path = DATA_DIR / f"{base_name}{extension}"
     metadata_path = DATA_DIR / f"{base_name}.json"

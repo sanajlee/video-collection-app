@@ -1,5 +1,7 @@
 import faceShoulderGuide from "../assets/guides/face-shoulder-guide.PNG";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+
 
 function getSupportedMimeType() {
   const candidates = [
@@ -17,12 +19,22 @@ function getSupportedMimeType() {
   );
 }
 
-export default function RecordPage({ onBack }) {
+export default function RecordPage({
+  onBack,
+  participantId,
+  task,
+  item,
+  taskIndex,
+  itemIndex,
+  totalTasks,
+  onComplete,
+}) {
   const videoRef = useRef(null);
   const previewRef = useRef(null);
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
+  const recordedUrlRef = useRef(null);
 
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -31,6 +43,23 @@ export default function RecordPage({ onBack }) {
   const [recordedBlob, setRecordedBlob] = useState(null);
   const [recordingMetadata, setRecordingMetadata] = useState(null);
   const [mimeType, setMimeType] = useState("");
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current
+          .getTracks()
+          .forEach((track) => track.stop());
+
+        streamRef.current = null;
+      }
+
+      if (recordedUrlRef.current) {
+        URL.revokeObjectURL(recordedUrlRef.current);
+        recordedUrlRef.current = null;
+      }
+    };
+  }, []);
 
   async function startCamera() {
     try {
@@ -52,8 +81,15 @@ export default function RecordPage({ onBack }) {
 
       streamRef.current = stream;
 
-      const videoTrack = stream.getVideoTracks()[0];
-      const audioTrack = stream.getAudioTracks()[0];
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      const videoSettings =
+        stream.getVideoTracks()[0]?.getSettings();
+
+      const audioSettings =
+        stream.getAudioTracks()[0]?.getSettings();
 
       const selectedMimeType = getSupportedMimeType();
 
@@ -62,44 +98,48 @@ export default function RecordPage({ onBack }) {
       setRecordingMetadata({
         createdAt: new Date().toISOString(),
 
-        video: videoTrack
-          ? videoTrack.getSettings()
-          : null,
+        video: {
+          width: videoSettings?.width,
+          height: videoSettings?.height,
+          frameRate: videoSettings?.frameRate,
+          aspectRatio: videoSettings?.aspectRatio,
+          facingMode: videoSettings?.facingMode,
+        },
 
-        audio: audioTrack
-          ? audioTrack.getSettings()
-          : null,
-
-        requested: {
-          width: 1920,
-          height: 1080,
-          frameRate: 30,
-          audioSampleRate: 48000,
+        audio: {
+          sampleRate: audioSettings?.sampleRate,
+          channelCount: audioSettings?.channelCount,
+          echoCancellation: audioSettings?.echoCancellation,
+          noiseSuppression: audioSettings?.noiseSuppression,
+          autoGainControl: audioSettings?.autoGainControl,
         },
 
         mimeType: selectedMimeType,
       });
 
-      console.log("Video settings:", videoTrack?.getSettings());
-      console.log("Audio settings:", audioTrack?.getSettings());
-      console.log("MIME type:", selectedMimeType);
-
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-
       setIsCameraReady(true);
     } catch (error) {
-      console.error(error);
-      alert("카메라/마이크 권한을 확인해 주세요.");
+      console.error("Camera initialization failed:", error);
+      setIsCameraReady(false);
     }
   }
 
+
   function startRecording() {
-    if (!streamRef.current) return;
+    if (!streamRef.current) {
+      alert("카메라가 준비되지 않았습니다.");
+      return;
+    }
 
     chunksRef.current = [];
+
+    if (recordedUrlRef.current) {
+      URL.revokeObjectURL(recordedUrlRef.current);
+      recordedUrlRef.current = null;
+    }
+
+    setRecordedUrl(null);
+    setRecordedBlob(null);
 
     const options = {
       videoBitsPerSecond: 5_000_000,
@@ -118,7 +158,7 @@ export default function RecordPage({ onBack }) {
     recorderRef.current = recorder;
 
     recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
+      if (event.data && event.data.size > 0) {
         chunksRef.current.push(event.data);
       }
     };
@@ -133,14 +173,16 @@ export default function RecordPage({ onBack }) {
         type: actualMimeType,
       });
 
-      setRecordedBlob(blob);
+      if (recordedUrlRef.current) {
+        URL.revokeObjectURL(recordedUrlRef.current);
+      }
 
       const url = URL.createObjectURL(blob);
-      setRecordedUrl(url);
 
-      if (previewRef.current) {
-        previewRef.current.src = url;
-      }
+      recordedUrlRef.current = url;
+
+      setRecordedBlob(blob);
+      setRecordedUrl(url);
 
       setRecordingMetadata((prev) => ({
         ...prev,
@@ -148,36 +190,10 @@ export default function RecordPage({ onBack }) {
         mimeType: actualMimeType,
         fileSizeBytes: blob.size,
       }));
-
-      console.log("Recorded blob:", blob);
     };
 
     recorder.start();
     setIsRecording(true);
-  }
-
-  function stopRecording() {
-    if (recorderRef.current) {
-      recorderRef.current.stop();
-    }
-
-    setIsRecording(false);
-  }
-
-  function retake() {
-    if (recordedUrl) {
-      URL.revokeObjectURL(recordedUrl);
-    }
-
-    setRecordedBlob(null);
-    setRecordingMetadata((prev) => ({
-      ...prev,
-      finishedAt: null,
-      fileSizeBytes: null,
-    }));
-
-    setRecordedUrl(null);
-    chunksRef.current = [];
   }
 
 
@@ -203,6 +219,46 @@ export default function RecordPage({ onBack }) {
     }, 1000);
   }
 
+  function retake() {
+    if (recordedUrlRef.current) {
+      URL.revokeObjectURL(recordedUrlRef.current);
+      recordedUrlRef.current = null;
+    }
+
+    setRecordedUrl(null);
+    setRecordedBlob(null);
+
+    setRecordingMetadata((prev) => ({
+      ...prev,
+      finishedAt: null,
+      fileSizeBytes: null,
+    }));
+
+    chunksRef.current = [];
+
+    if (previewRef.current) {
+      previewRef.current.pause();
+      previewRef.current.removeAttribute("src");
+      previewRef.current.load();
+    }
+
+    if (videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }
+
+  function stopRecording() {
+    if (
+      recorderRef.current &&
+      recorderRef.current.state !== "inactive"
+    ) {
+      recorderRef.current.stop();
+    }
+
+    setIsRecording(false);
+  }
+
+
   async function submitVideo() {
     if (!recordedBlob) {
       alert("녹화된 영상이 없습니다.");
@@ -223,9 +279,27 @@ export default function RecordPage({ onBack }) {
         `recording.${extension}`
       );
 
+      const metadata = {
+        ...(recordingMetadata || {}),
+
+        participantId,
+
+        task: {
+          id: task.id,
+          title: task.title,
+        },
+
+        item: {
+          id: item.id,
+          type: item.type,
+          prompt: item.prompt ?? null,
+          imageSrc: item.imageSrc ?? null,
+        },
+      };
+
       formData.append(
         "metadata",
-        JSON.stringify(recordingMetadata || {})
+        JSON.stringify(metadata)
       );
 
       const response = await fetch(
@@ -248,6 +322,9 @@ export default function RecordPage({ onBack }) {
       console.log("Upload result:", result);
 
       alert("업로드 완료!");
+
+      onComplete();
+
     } catch (error) {
       console.error(error);
       alert("업로드에 실패했습니다.");
@@ -302,21 +379,37 @@ export default function RecordPage({ onBack }) {
         </button>
 
         <div>
-          <p className="step-label">STEP 1</p>
-          <h1 className="record-title">안내에 따라 촬영해 주세요</h1>
-
-          <p className="record-description">
-            화면 아래쪽의 가이드 영역에 얼굴을 맞춘 뒤, 준비가 되면 촬영을
-            시작해 주세요.
+          <p>
+            STEP {taskIndex + 1} / {totalTasks}
           </p>
-        </div>
 
-        <div className="instruction-box">
-          <p className="instruction-title">촬영 지시문</p>
-          <p className="instruction-content">
-            여기에 실험/과제별 instruction이 들어갑니다. 예: “화면을 바라보고
-            제시된 문장을 자연스럽게 읽어 주세요.”
+          <h2>{task.title}</h2>
+
+          <p>{task.instruction}</p>
+
+          <p>
+            {itemIndex + 1} / {task.items.length}
           </p>
+
+          {item.type === "text" && (
+            <div className="stimulus-text">
+              {item.prompt}
+            </div>
+          )}
+
+          {item.type === "image" && (
+            <img
+              src={item.imageSrc}
+              alt="설명할 그림"
+              className="stimulus-image"
+            />
+          )}
+
+          {item.type === "topic" && (
+            <div className="stimulus-topic">
+              {item.prompt}
+            </div>
+          )}
         </div>
 
         <div className="status-row">
@@ -330,74 +423,89 @@ export default function RecordPage({ onBack }) {
 
       <section className="camera-panel">
         <div className="video-wrapper">
-          {!recordedUrl ? (
-            <>
-              <video
-                ref={videoRef}
-                autoPlay
-                muted
-                playsInline
-                className="camera-video camera-video-live"
-              />
 
-              <div className="guide-overlay">
-                <img
-                  src={faceShoulderGuide}
-                  className="guide-image"
-                  alt=""
-                />
-                <p className="guide-text">얼굴과 어깨를 가이드에 맞춰 주세요</p>
-              </div>
-            </>
-          ) : (
-            <video
-              ref={previewRef}
-              src={recordedUrl}
-              controls
-              playsInline
-              className="camera-video"
-            />
+          {/* LIVE CAMERA */}
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="camera-video camera-video-live"
+            style={{
+              display: recordedUrl ? "none" : "block",
+            }}
+          />
+
+          {/* GUIDE */}
+          {!recordedUrl && (
+            <div className="guide-overlay">
+              <img
+                src={faceShoulderGuide}
+                className="guide-image"
+                alt=""
+              />
+              <p className="guide-text">
+                얼굴과 어깨를 가이드에 맞춰 주세요
+              </p>
+            </div>
           )}
+
+          {/* RECORDED PREVIEW */}
+          <video
+            ref={previewRef}
+            src={recordedUrl || undefined}
+            controls
+            playsInline
+            preload="auto"
+            className="camera-video"
+            style={{
+              display: recordedUrl ? "block" : "none",
+            }}
+          />
+
         </div>
 
+
+
         <div className="button-bar">
-          {!isCameraReady && !recordedUrl && (
-            <button className="primary-button" onClick={startCamera}>
+          {!isCameraReady ? (
+            <button
+              className="primary-button"
+              onClick={startCamera}
+            >
               카메라 켜기
             </button>
-          )}
+          ) : recordedUrl ? (
+            <>
+              <button onClick={retake}>
+                다시 촬영
+              </button>
 
-          {isCameraReady && !isRecording && !recordedUrl && (
-            <button className="primary-button" onClick={startRecording}>
+              <button
+                className="primary-button"
+                onClick={submitVideo}
+              >
+                제출하기
+              </button>
+            </>
+          ) : isRecording ? (
+            <button
+              className="primary-button"
+              onClick={stopRecording}
+            >
+              촬영 종료
+            </button>
+          ) : (
+            <button
+              className="primary-button"
+              onClick={startRecording}
+            >
               촬영 시작
             </button>
           )}
-
-          {isRecording && (
-            <button className="danger-button" onClick={stopRecording}>
-              촬영 종료
-            </button>
-          )}
-
-          {recordedUrl && (
-            <>
-              <button className="secondary-button" onClick={retake}>
-                다시 촬영
-              </button>
-              <button className="primary-button" onClick={submitVideo}>
-                제출하기
-              </button>
-
-              <button onClick={downloadVideo}>
-                영상 다운로드
-              </button>
-
-              <button onClick={downloadMetadata}>
-                메타데이터 다운로드
-              </button>
-            </>
-          )}
         </div>
+
+
       </section>
     </main>
   );
