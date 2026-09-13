@@ -302,9 +302,11 @@ export default function RecordPage({
         JSON.stringify(metadata)
       );
 
+      const API_BASE_URL =
+        import.meta.env.VITE_API_BASE_URL;
+
       const response = await fetch(
-        // "http://192.168.45.148:8000/api/recordings",
-        "/api/recordings",
+        `${API_BASE_URL}/api/recordings`,
         {
           method: "POST",
           body: formData,
