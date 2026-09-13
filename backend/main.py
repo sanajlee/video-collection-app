@@ -93,3 +93,14 @@ async def upload_recording(
         "video": video_path.name,
         "metadata": metadata_path.name,
     }
+
+
+@app.get("/debug/files")
+def list_files():
+    return {
+        "files": [
+            p.name
+            for p in DATA_DIR.iterdir()
+            if p.is_file()
+        ]
+    }
