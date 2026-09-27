@@ -108,29 +108,7 @@ def list_files():
             if p.is_file()
         ]
     }
-
-@app.get("/debug/nas-port")
-def check_nas_port():
-    host = os.environ["NAS_HOST"]
-    port = int(os.environ["NAS_PORT"])
-
-    try:
-        with socket.create_connection(
-            (host, port),
-            timeout=5,
-        ):
-            return {
-                "reachable": True,
-            }
-
-    except Exception as e:
-        return {
-            "reachable": False,
-            "error": type(e).__name__,
-            "message": str(e),
-        }
-
-
+    
 @app.get("/debug/nas-port")
 def check_nas_port():
     host = os.environ["NAS_HOST"]
@@ -166,7 +144,7 @@ def check_nas_port():
             "error": type(e).__name__,
             "message": str(e),
         }
-        
+
 
 @app.get("/debug/outbound-ip")
 def get_outbound_ip():
