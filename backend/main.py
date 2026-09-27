@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 import socket
 import paramiko
+import urllib.request
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -130,49 +131,54 @@ def check_nas_port():
         }
 
 
-@app.get("/debug/nas-sftp")
-def check_nas_sftp():
+@app.get("/debug/nas-port")
+def check_nas_port():
     host = os.environ["NAS_HOST"]
     port = int(os.environ["NAS_PORT"])
-    username = os.environ["NAS_USERNAME"]
-    password = os.environ["NAS_PASSWORD"]
-
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
-        client.connect(
-            hostname=host,
-            port=port,
-            username=username,
-            password=password,
-            timeout=5,          # TCP connect
-            banner_timeout=5,   # SSH banner
-            auth_timeout=5,     # authentication
-            allow_agent=False,
-            look_for_keys=False,
+        resolved = socket.getaddrinfo(
+            host,
+            port,
+            type=socket.SOCK_STREAM,
         )
 
-        sftp = client.open_sftp()
+        addresses = list({
+            item[4][0]
+            for item in resolved
+        })
 
-        files = sftp.listdir(".")
-
-        sftp.close()
-        client.close()
-
-        return {
-            "authenticated": True,
-            "files": files[:20],
-        }
+        with socket.create_connection(
+            (host, port),
+            timeout=5,
+        ):
+            return {
+                "reachable": True,
+                "host": host,
+                "resolvedAddresses": addresses,
+            }
 
     except Exception as e:
-        try:
-            client.close()
-        except Exception:
-            pass
-
         return {
-            "authenticated": False,
+            "reachable": False,
+            "host": host,
+            "resolvedAddresses": addresses if "addresses" in locals() else [],
+            "error": type(e).__name__,
+            "message": str(e),
+        }
+        
+
+@app.get("/debug/outbound-ip")
+def get_outbound_ip():
+    try:
+        with urllib.request.urlopen(
+            "https://api.ipify.org?format=json",
+            timeout=5,
+        ) as response:
+            return json.loads(response.read().decode())
+
+    except Exception as e:
+        return {
             "error": type(e).__name__,
             "message": str(e),
         }
