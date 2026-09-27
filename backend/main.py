@@ -2,10 +2,32 @@ from pathlib import Path
 import json
 import shutil
 from datetime import datetime
+import os
+import socket
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+@app.get("/debug/nas-port")
+def check_nas_port():
+    host = os.environ["NAS_HOST"]
+    port = int(os.environ["NAS_PORT"])
+
+    try:
+        with socket.create_connection(
+            (host, port),
+            timeout=5,
+        ):
+            return {
+                "reachable": True,
+            }
+
+    except Exception as e:
+        return {
+            "reachable": False,
+            "error": type(e).__name__,
+            "message": str(e),
+        }
 
 app = FastAPI()
 
