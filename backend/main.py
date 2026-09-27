@@ -4,6 +4,7 @@ import shutil
 from datetime import datetime
 import os
 import socket
+import paramiko
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -124,6 +125,42 @@ def check_nas_port():
     except Exception as e:
         return {
             "reachable": False,
+            "error": type(e).__name__,
+            "message": str(e),
+        }
+
+
+@app.get("/debug/nas-sftp")
+def check_nas_sftp():
+    host = os.environ["NAS_HOST"]
+    port = int(os.environ["NAS_PORT"])
+    username = os.environ["NAS_USERNAME"]
+    password = os.environ["NAS_PASSWORD"]
+
+    try:
+        transport = paramiko.Transport((host, port))
+        transport.connect(
+            username=username,
+            password=password,
+        )
+
+        sftp = paramiko.SFTPClient.from_transport(transport)
+
+        cwd = sftp.getcwd()
+        files = sftp.listdir(".")
+
+        sftp.close()
+        transport.close()
+
+        return {
+            "authenticated": True,
+            "cwd": cwd,
+            "files": files[:20],
+        }
+
+    except Exception as e:
+        return {
+            "authenticated": False,
             "error": type(e).__name__,
             "message": str(e),
         }
