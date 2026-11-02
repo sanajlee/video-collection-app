@@ -10,6 +10,8 @@ import urllib.request
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+import httpx
+
 
 app = FastAPI()
 
@@ -25,6 +27,9 @@ app.add_middleware(
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+RELAY_URL = os.environ.get("RELAY_URL")
+RELAY_TOKEN = os.environ.get("RELAY_TOKEN")
+
 
 @app.get("/health")
 def health():
@@ -36,66 +41,91 @@ async def upload_recording(
     video: UploadFile = File(...),
     metadata: str = Form(...),
 ):
-    try:
-        metadata_dict = json.loads(metadata)
-    except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid metadata JSON",
-        )
+    video_bytes = await video.read()
 
+    # -------------------------
+    # 1. Render local 저장
+    # -------------------------
 
-    participant_id = metadata_dict.get("participantId", "unknown")
-
-    task_id = (
-        metadata_dict
-        .get("task", {})
-        .get("id", "unknown")
-    )
-
-    item_id = (
-        metadata_dict
-        .get("item", {})
-        .get("id", "unknown")
-    )
+    os.makedirs("data", exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-   
-    base_name = (
-        f"{participant_id}_"
-        f"{item_id}_"
-        f"{timestamp}"
+
+    try:
+        metadata_obj = json.loads(metadata)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid metadata JSON")
+
+    participant_id = metadata_obj.get("participantId", "unknown")
+    item_id = metadata_obj.get("item", {}).get("id", "unknown")
+
+    base_name = f"{participant_id}_{item_id}_{timestamp}"
+
+    video_path = os.path.join(
+        "data",
+        f"{base_name}.webm",
     )
 
-    # pilot 단계에서는 임시 filename
-    extension = Path(video.filename or "").suffix or ".webm"
+    metadata_path = os.path.join(
+        "data",
+        f"{base_name}.json",
+    )
 
-    # base_name = f"pilot_{timestamp}"
+    with open(video_path, "wb") as f:
+        f.write(video_bytes)
 
-    video_path = DATA_DIR / f"{base_name}{extension}"
-    metadata_path = DATA_DIR / f"{base_name}.json"
-
-    with video_path.open("wb") as buffer:
-        shutil.copyfileobj(video.file, buffer)
-
-    metadata_dict["server"] = {
-        "receivedAt": datetime.now().isoformat(),
-        "videoFilename": video_path.name,
-    }
-
-    metadata_path.write_text(
-        json.dumps(
-            metadata_dict,
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(
+            metadata_obj,
+            f,
             ensure_ascii=False,
             indent=2,
-        ),
-        encoding="utf-8",
-    )
+        )
+
+    # -------------------------
+    # 2. Mac relay로 전송
+    # -------------------------
+
+    if not RELAY_URL or not RELAY_TOKEN:
+        raise HTTPException(
+            status_code=500,
+            detail="Relay configuration missing",
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                f"{RELAY_URL}/upload",
+                headers={
+                    "Authorization": f"Bearer {RELAY_TOKEN}",
+                },
+                files={
+                    "video": (
+                        f"{base_name}.webm",
+                        video_bytes,
+                        video.content_type or "video/webm",
+                    ),
+                },
+                data={
+                    "metadata": json.dumps(
+                        metadata_obj,
+                        ensure_ascii=False,
+                    ),
+                },
+            )
+
+        response.raise_for_status()
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Relay upload failed: {str(e)}",
+        )
 
     return {
         "success": True,
-        "video": video_path.name,
-        "metadata": metadata_path.name,
+        "filename": f"{base_name}.webm",
+        "relay": "ok",
     }
 
 
@@ -160,3 +190,16 @@ def get_outbound_ip():
             "error": type(e).__name__,
             "message": str(e),
         }
+
+@app.get("/debug/relay")
+async def debug_relay():
+    if not RELAY_URL:
+        raise HTTPException(status_code=500, detail="RELAY_URL is not set")
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(f"{RELAY_URL}/health")
+
+    return {
+        "status_code": response.status_code,
+        "body": response.json(),
+    }
