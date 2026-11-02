@@ -194,12 +194,26 @@ def get_outbound_ip():
 @app.get("/debug/relay")
 async def debug_relay():
     if not RELAY_URL:
-        raise HTTPException(status_code=500, detail="RELAY_URL is not set")
+        return {
+            "ok": False,
+            "error": "RELAY_URL is not set",
+        }
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.get(f"{RELAY_URL}/health")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(f"{RELAY_URL}/health")
 
-    return {
-        "status_code": response.status_code,
-        "body": response.json(),
-    }
+        return {
+            "ok": True,
+            "relay_url": RELAY_URL,
+            "status_code": response.status_code,
+            "text": response.text,
+        }
+
+    except Exception as e:
+        return {
+            "ok": False,
+            "relay_url": RELAY_URL,
+            "error_type": type(e).__name__,
+            "error": str(e),
+        }
