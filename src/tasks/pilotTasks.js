@@ -44,7 +44,7 @@ export const pilotTasks = [
       {
         id: "monologue_001",
         type: "topic",
-        prompt: "최근에 즐겁게 했던 일",
+        prompt: "라면 끓이는 방법을 단계별로 설명해 주세요. 초등학생에게 설명해 준다고 생각하고 차근차근 말해 주세요.",
       },
       {
         id: "monologue_002",
