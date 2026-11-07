@@ -381,17 +381,8 @@ export default function RecordPage({
         </button>
 
         <div>
-          <p>
-            STEP {taskIndex + 1} / {totalTasks}
-          </p>
-
-          <h2>{task.title}</h2>
 
           <p>{task.instruction}</p>
-
-          <p>
-            {itemIndex + 1} / {task.items.length}
-          </p>
 
           {item.type === "text" && (
             <div className="stimulus-text">
