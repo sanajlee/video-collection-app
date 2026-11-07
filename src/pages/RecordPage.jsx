@@ -374,9 +374,13 @@ export default function RecordPage({
     <main className="record-page">
       <section className="instruction-panel">
         <div className="instruction-topbar">
-          <button className="back-button" onClick={onBack}>
-            ← 처음으로
-          </button>
+        <button
+          type="button"
+          className="back-button"
+          onClick={onBack}
+        >
+          ← 처음으로
+        </button>
 
           <div className="status-row">
             <span className="status-badge">

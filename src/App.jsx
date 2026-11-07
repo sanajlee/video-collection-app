@@ -36,6 +36,7 @@ function App() {
       <TaskPage
         participantId={participantId}
         onComplete={() => setScreen("complete")}
+        onBack={() => setScreen("home")}
       />
     );
   }
