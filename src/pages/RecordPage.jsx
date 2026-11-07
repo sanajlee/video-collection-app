@@ -24,9 +24,6 @@ export default function RecordPage({
   participantId,
   task,
   item,
-  taskIndex,
-  itemIndex,
-  totalTasks,
   onComplete,
 }) {
   const videoRef = useRef(null);
@@ -376,13 +373,30 @@ export default function RecordPage({
   return (
     <main className="record-page">
       <section className="instruction-panel">
-        <button className="back-button" onClick={onBack}>
-          ← 처음으로
-        </button>
+        <div className="instruction-topbar">
+          <button className="back-button" onClick={onBack}>
+            ← 처음으로
+          </button>
 
-        <div>
+          <div className="status-row">
+            <span className="status-badge">
+              {isRecording
+                ? "촬영 중"
+                : recordedUrl
+                  ? "미리보기"
+                  : "대기 중"}
+            </span>
 
-          <p>{task.instruction}</p>
+            {isRecording && (
+              <span className="recording-dot">● REC</span>
+            )}
+          </div>
+        </div>
+
+        <div className="stimulus-container">
+          <p className="task-instruction">
+            {task.instruction}
+          </p>
 
           {item.type === "text" && (
             <div className="stimulus-text">
@@ -403,14 +417,6 @@ export default function RecordPage({
               {item.prompt}
             </div>
           )}
-        </div>
-
-        <div className="status-row">
-          <span className="status-badge">
-            {isRecording ? "촬영 중" : recordedUrl ? "미리보기" : "대기 중"}
-          </span>
-
-          {isRecording && <span className="recording-dot">● REC</span>}
         </div>
       </section>
 

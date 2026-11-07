@@ -20,46 +20,182 @@ button {
 
 .home-page {
   min-height: 100dvh;
-  background: #f7f7f8;
   display: flex;
-  justify-content: center;
   align-items: center;
-  flex-direction: column;
+  justify-content: center;
   padding: 24px;
   box-sizing: border-box;
-  text-align: center;
-}
 
-.home-page h1 {
-  margin-bottom: 20px;
-}
-
-.home-page p {
-  margin: 6px 0;
-}
-
-.home-page button {
-  margin-top: 24px;
+  background:
+    radial-gradient(circle at top, #f6f8fc 0%, #eef2f7 35%, #e7ebf2 100%);
 }
 
 .home-card {
-  width: 100%;
-  max-width: 560px;
-  background: white;
+  width: min(92vw, 720px);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(25, 35, 55, 0.08);
   border-radius: 24px;
-  padding: 32px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+  padding: 32px 24px 28px;
+  box-sizing: border-box;
+
+  box-shadow:
+    0 16px 40px rgba(26, 35, 50, 0.08),
+    0 2px 10px rgba(26, 35, 50, 0.05);
+
+  text-align: center;
+  backdrop-filter: blur(10px);
 }
 
-.home-title {
-  font-size: 32px;
-  margin: 0 0 16px;
+.home-header {
+  margin-bottom: 24px;
 }
 
-.home-text {
-  font-size: 16px;
+.home-eyebrow {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5d6b82;
+}
+
+.home-header h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.15;
+  font-weight: 800;
+  color: #162033;
+}
+
+.home-subtitle {
+  margin: 14px auto 0;
+  max-width: 520px;
+  font-size: 1.05rem;
   line-height: 1.6;
-  color: #444;
+  color: #4a5668;
+}
+
+.home-info {
+  margin-bottom: 28px;
+}
+
+.participant-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+
+  margin-bottom: 20px;
+  padding: 14px 18px;
+
+  background: #f5f7fb;
+  border: 1px solid #dbe3f0;
+  border-radius: 16px;
+}
+
+.participant-label {
+  font-size: 0.84rem;
+  color: #66758c;
+}
+
+.participant-id {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #172033;
+  letter-spacing: 0.02em;
+}
+
+.home-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  max-width: 520px;
+  text-align: left;
+}
+
+.home-checklist li {
+  position: relative;
+  padding-left: 1.4em;
+  margin: 10px 0;
+  line-height: 1.55;
+  color: #324055;
+}
+
+.home-checklist li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: #4d6fff;
+  font-weight: 700;
+}
+
+.home-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.start-button {
+  appearance: none;
+  border: none;
+  border-radius: 14px;
+  padding: 14px 24px;
+
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+
+  color: white;
+  background: linear-gradient(135deg, #356dff 0%, #5a86ff 100%);
+  box-shadow: 0 10px 24px rgba(53, 109, 255, 0.24);
+
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.start-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(53, 109, 255, 0.28);
+}
+
+.start-button:active {
+  transform: translateY(0);
+}
+
+.home-note {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: #7b8798;
+}
+
+@media (max-width: 640px) {
+  .home-card {
+    padding: 28px 18px 24px;
+    border-radius: 20px;
+  }
+
+  .home-subtitle {
+    font-size: 0.98rem;
+  }
+
+  .participant-id {
+    font-size: 1.28rem;
+  }
+
+  .home-checklist {
+    font-size: 0.96rem;
+  }
+
+  .start-button {
+    width: 100%;
+    max-width: 280px;
+  }
 }
 
 .notice-box {
@@ -346,4 +482,112 @@ button {
 .stimulus-topic {
   font-size: 1.2rem;
   font-weight: 500;
+}
+
+
+/* Add/merge these rules into your existing stylesheet */
+
+.instruction-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 14px 18px 12px;
+  box-sizing: border-box;
+}
+
+.instruction-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.stimulus-container {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 8px 4px 4px;
+  box-sizing: border-box;
+}
+
+.task-instruction {
+  margin: 0 0 10px;
+  max-width: 760px;
+
+  text-align: center;
+  font-size: 0.96rem;
+  line-height: 1.45;
+  font-weight: 500;
+  color: #667085;
+}
+
+.stimulus-text,
+.stimulus-topic {
+  width: 100%;
+  max-width: 760px;
+  box-sizing: border-box;
+
+  text-align: center;
+  overflow-wrap: break-word;
+  word-break: keep-all;
+}
+
+.stimulus-text {
+  font-size: clamp(1.55rem, 4.5vw, 2.35rem);
+  line-height: 1.35;
+  font-weight: 700;
+  color: #172033;
+}
+
+.stimulus-topic {
+  font-size: clamp(1.12rem, 3.3vw, 1.55rem);
+  line-height: 1.55;
+  font-weight: 600;
+  color: #172033;
+}
+
+.stimulus-image {
+  display: block;
+  max-width: min(100%, 720px);
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 14px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.status-badge {
+  white-space: nowrap;
+}
+
+.back-button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+  .instruction-panel {
+    padding: 10px 12px 8px;
+  }
+
+  .task-instruction {
+    margin-bottom: 8px;
+    font-size: 0.88rem;
+  }
+
+  .stimulus-topic {
+    font-size: 1.08rem;
+  }
 }

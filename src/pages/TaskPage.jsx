@@ -40,9 +40,6 @@ export default function TaskPage({
       participantId={participantId}
       task={task}
       item={item}
-      taskIndex={taskIndex}
-      itemIndex={itemIndex}
-      totalTasks={pilotTasks.length}
       onComplete={handleItemComplete}
       onBack={onBack}
     />
