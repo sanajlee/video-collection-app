@@ -19,12 +19,27 @@ button {
 /* Home page */
 
 .home-page {
-  min-height: 100vh;
+  min-height: 100dvh;
   background: #f7f7f8;
   display: flex;
   justify-content: center;
   align-items: center;
+  flex-direction: column;
   padding: 24px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.home-page h1 {
+  margin-bottom: 20px;
+}
+
+.home-page p {
+  margin: 6px 0;
+}
+
+.home-page button {
+  margin-top: 24px;
 }
 
 .home-card {
