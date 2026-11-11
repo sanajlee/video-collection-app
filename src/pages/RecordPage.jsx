@@ -19,6 +19,8 @@ function getSupportedMimeType() {
   );
 }
 
+const RECORD_FPS = 30;
+
 export default function RecordPage({
   onBack,
   participantId,
@@ -32,6 +34,10 @@ export default function RecordPage({
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
   const recordedUrlRef = useRef(null);
+  const recordCanvasRef = useRef(null);
+  const captureAreaRef = useRef(null);
+  const cropAnimationRef = useRef(null);
+  const canvasStreamRef = useRef(null);
 
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -44,6 +50,18 @@ export default function RecordPage({
 
   useEffect(() => {
     return () => {
+      if (cropAnimationRef.current) {
+        cancelAnimationFrame(cropAnimationRef.current);
+        cropAnimationRef.current = null;
+      }
+
+      if (canvasStreamRef.current) {
+        canvasStreamRef.current
+          .getVideoTracks()
+          .forEach((track) => track.stop());
+        canvasStreamRef.current = null;
+      }
+
       if (streamRef.current) {
         streamRef.current
           .getTracks()
@@ -61,6 +79,8 @@ export default function RecordPage({
 
   // 다음 item으로 넘어갈 때 녹화 결과만 초기화하고 카메라 스트림은 유지한다.
   useEffect(() => {
+    stopCropDrawing();
+
     if (recordedUrlRef.current) {
       URL.revokeObjectURL(recordedUrlRef.current);
       recordedUrlRef.current = null;
@@ -158,9 +178,39 @@ export default function RecordPage({
   }
 
 
+  function stopCropDrawing() {
+    if (cropAnimationRef.current) {
+      cancelAnimationFrame(cropAnimationRef.current);
+      cropAnimationRef.current = null;
+    }
+
+    if (canvasStreamRef.current) {
+      canvasStreamRef.current
+        .getVideoTracks()
+        .forEach((track) => track.stop());
+      canvasStreamRef.current = null;
+    }
+  }
+
   function startRecording() {
-    if (!streamRef.current) {
+    if (!streamRef.current || !videoRef.current) {
       alert("카메라가 준비되지 않았습니다.");
+      return;
+    }
+
+    const video = videoRef.current;
+    const canvas = recordCanvasRef.current;
+
+    if (!canvas || typeof canvas.captureStream !== "function") {
+      alert("이 브라우저에서는 부분 화면 녹화를 지원하지 않습니다.");
+      return;
+    }
+
+    const sourceWidth = video.videoWidth;
+    const sourceHeight = video.videoHeight;
+
+    if (!sourceWidth || !sourceHeight) {
+      alert("카메라 영상이 아직 준비 중입니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
 
@@ -174,6 +224,105 @@ export default function RecordPage({
     setRecordedUrl(null);
     setRecordedBlob(null);
 
+    const captureArea = captureAreaRef.current;
+
+    if (!captureArea) {
+      alert("촬영 영역을 확인하지 못했습니다.");
+      return;
+    }
+
+    // 화면에 실제 보이는 video-wrapper의 종횡비를 기준으로
+    // 원본 카메라 프레임에서 동일한 영역을 계산한다.
+    // preview는 object-fit: cover / object-position: center를 사용한다.
+    const captureRect = captureArea.getBoundingClientRect();
+
+    if (!captureRect.width || !captureRect.height) {
+      alert("촬영 영역의 크기를 확인하지 못했습니다.");
+      return;
+    }
+
+    const frameAspect =
+      captureRect.width / captureRect.height;
+    const sourceAspect =
+      sourceWidth / sourceHeight;
+
+    let sourceX = 0;
+    let sourceY = 0;
+    let cropWidth = sourceWidth;
+    let cropHeight = sourceHeight;
+
+    if (sourceAspect > frameAspect) {
+      // 원본이 화면보다 더 넓음 → 좌우를 잘라낸다.
+      cropWidth = sourceHeight * frameAspect;
+      sourceX = (sourceWidth - cropWidth) / 2;
+    } else if (sourceAspect < frameAspect) {
+      // 원본이 화면보다 더 높음 → 위아래를 잘라낸다.
+      cropHeight = sourceWidth / frameAspect;
+      sourceY = (sourceHeight - cropHeight) / 2;
+    }
+
+    // 인코더 호환성을 위해 좌표와 출력 크기를 짝수로 맞춘다.
+    sourceX = Math.max(
+      0,
+      Math.floor(sourceX / 2) * 2
+    );
+    sourceY = Math.max(
+      0,
+      Math.floor(sourceY / 2) * 2
+    );
+    cropWidth = Math.min(
+      sourceWidth - sourceX,
+      Math.floor(cropWidth / 2) * 2
+    );
+    cropHeight = Math.min(
+      sourceHeight - sourceY,
+      Math.floor(cropHeight / 2) * 2
+    );
+
+    canvas.width = cropWidth;
+    canvas.height = cropHeight;
+
+    const ctx = canvas.getContext("2d", {
+      alpha: false,
+      desynchronized: true,
+    });
+
+    if (!ctx) {
+      alert("녹화 화면을 준비하지 못했습니다.");
+      return;
+    }
+
+    function drawCroppedFrame() {
+      ctx.drawImage(
+        video,
+        sourceX,
+        sourceY,
+        cropWidth,
+        cropHeight,
+        0,
+        0,
+        cropWidth,
+        cropHeight
+      );
+
+      cropAnimationRef.current = requestAnimationFrame(
+        drawCroppedFrame
+      );
+    }
+
+    drawCroppedFrame();
+
+    const canvasStream = canvas.captureStream(RECORD_FPS);
+    canvasStreamRef.current = canvasStream;
+
+    const canvasVideoTrack = canvasStream.getVideoTracks()[0];
+    const audioTracks = streamRef.current.getAudioTracks();
+
+    const recordingStream = new MediaStream([
+      canvasVideoTrack,
+      ...audioTracks,
+    ]);
+
     const options = {
       videoBitsPerSecond: 5_000_000,
       audioBitsPerSecond: 128_000,
@@ -183,12 +332,40 @@ export default function RecordPage({
       options.mimeType = mimeType;
     }
 
-    const recorder = new MediaRecorder(
-      streamRef.current,
-      options
-    );
+    let recorder;
+
+    try {
+      recorder = new MediaRecorder(
+        recordingStream,
+        options
+      );
+    } catch (error) {
+      stopCropDrawing();
+      console.error("MediaRecorder initialization failed:", error);
+      alert("녹화를 시작하지 못했습니다.");
+      return;
+    }
 
     recorderRef.current = recorder;
+
+    setRecordingMetadata((prev) => ({
+      ...(prev || {}),
+      createdAt: new Date().toISOString(),
+      crop: {
+        mode: "visible-frame",
+        objectFit: "cover",
+        objectPosition: "center",
+        sourceWidth,
+        sourceHeight,
+        sourceX,
+        sourceY,
+        cropWidth,
+        cropHeight,
+        outputWidth: cropWidth,
+        outputHeight: cropHeight,
+        displayAspectRatio: frameAspect,
+      },
+    }));
 
     recorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) {
@@ -197,6 +374,8 @@ export default function RecordPage({
     };
 
     recorder.onstop = () => {
+      stopCropDrawing();
+
       const actualMimeType =
         recorder.mimeType ||
         mimeType ||
@@ -225,10 +404,16 @@ export default function RecordPage({
       }));
     };
 
-    recorder.start();
+    recorder.onerror = (event) => {
+      console.error("Recording failed:", event.error || event);
+      stopCropDrawing();
+      setIsRecording(false);
+      alert("녹화 중 오류가 발생했습니다.");
+    };
+
+    recorder.start(1000);
     setIsRecording(true);
   }
-
 
   function getFileExtension(type) {
     if (type?.includes("mp4")) return "mp4";
@@ -467,7 +652,7 @@ export default function RecordPage({
       </section>
 
       <section className="camera-panel">
-        <div className="video-wrapper">
+        <div ref={captureAreaRef} className="video-wrapper">
 
           {isRecording && (
             <div className="recording-overlay">
@@ -480,6 +665,13 @@ export default function RecordPage({
               파일 전송 중…
             </div>
           )}
+
+          {/* 실제 저장용 crop canvas — 화면에는 표시하지 않음 */}
+          <canvas
+            ref={recordCanvasRef}
+            className="record-canvas"
+            aria-hidden="true"
+          />
 
           {/* LIVE CAMERA */}
           <video
