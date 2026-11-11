@@ -36,7 +36,6 @@ export default function TaskPage({
 
   return (
     <RecordPage
-      key={item.id}
       participantId={participantId}
       task={task}
       item={item}

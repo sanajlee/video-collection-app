@@ -40,6 +40,7 @@ export default function RecordPage({
   const [recordedBlob, setRecordedBlob] = useState(null);
   const [recordingMetadata, setRecordingMetadata] = useState(null);
   const [mimeType, setMimeType] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -57,6 +58,41 @@ export default function RecordPage({
       }
     };
   }, []);
+
+  // 다음 item으로 넘어갈 때 녹화 결과만 초기화하고 카메라 스트림은 유지한다.
+  useEffect(() => {
+    if (recordedUrlRef.current) {
+      URL.revokeObjectURL(recordedUrlRef.current);
+      recordedUrlRef.current = null;
+    }
+
+    setRecordedUrl(null);
+    setRecordedBlob(null);
+    setIsRecording(false);
+    setIsSubmitting(false);
+    chunksRef.current = [];
+
+    setRecordingMetadata((prev) =>
+      prev
+        ? {
+            ...prev,
+            createdAt: new Date().toISOString(),
+            finishedAt: null,
+            fileSizeBytes: null,
+          }
+        : prev
+    );
+
+    if (previewRef.current) {
+      previewRef.current.pause();
+      previewRef.current.removeAttribute("src");
+      previewRef.current.load();
+    }
+
+    if (videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [item.id]);
 
   async function startCamera() {
     try {
@@ -257,10 +293,14 @@ export default function RecordPage({
 
 
   async function submitVideo() {
-    if (!recordedBlob) {
-      alert("녹화된 영상이 없습니다.");
+    if (!recordedBlob || isSubmitting) {
+      if (!recordedBlob) {
+        alert("녹화된 영상이 없습니다.");
+      }
       return;
     }
+
+    setIsSubmitting(true);
 
     try {
       const formData = new FormData();
@@ -320,13 +360,12 @@ export default function RecordPage({
 
       console.log("Upload result:", result);
 
-      alert("업로드 완료!");
-
       onComplete();
 
     } catch (error) {
       console.error(error);
-      alert("업로드에 실패했습니다.");
+      alert("업로드에 실패했습니다. 다시 시도해 주세요.");
+      setIsSubmitting(false);
     }
   }
 
@@ -374,21 +413,24 @@ export default function RecordPage({
     <main className="record-page">
       <section className="instruction-panel">
         <div className="instruction-topbar">
-        <button
-          type="button"
-          className="back-button"
-          onClick={onBack}
-        >
-          ← 처음으로
-        </button>
+          <button
+            type="button"
+            className="back-button"
+            onClick={onBack}
+            disabled={isSubmitting}
+          >
+            ← 처음으로
+          </button>
 
           <div className="status-row">
             <span className="status-badge">
-              {isRecording
-                ? "촬영 중"
-                : recordedUrl
-                  ? "미리보기"
-                  : "대기 중"}
+              {isSubmitting
+                ? "파일 전송 중"
+                : isRecording
+                  ? "녹음 중"
+                  : recordedUrl
+                    ? "미리보기"
+                    : "대기 중"}
             </span>
 
             {isRecording && (
@@ -426,6 +468,18 @@ export default function RecordPage({
 
       <section className="camera-panel">
         <div className="video-wrapper">
+
+          {isRecording && (
+            <div className="recording-overlay">
+              <span className="recording-overlay-dot">●</span> 녹음 중
+            </div>
+          )}
+
+          {isSubmitting && (
+            <div className="upload-overlay">
+              파일 전송 중…
+            </div>
+          )}
 
           {/* LIVE CAMERA */}
           <video
@@ -480,15 +534,19 @@ export default function RecordPage({
             </button>
           ) : recordedUrl ? (
             <>
-              <button onClick={retake}>
+              <button
+                onClick={retake}
+                disabled={isSubmitting}
+              >
                 다시 촬영
               </button>
 
               <button
                 className="primary-button"
                 onClick={submitVideo}
+                disabled={isSubmitting}
               >
-                제출하기
+                {isSubmitting ? "파일 전송 중…" : "제출하기"}
               </button>
             </>
           ) : isRecording ? (
