@@ -21,8 +21,10 @@ function getSupportedMimeType() {
 
 const RECORD_FPS = 30;
 const SPEECH_TARGET_MS = 5000;
-const MIN_ONSET_MS = 120;
-const SPEECH_MARGIN_DB = 3; // Pilot onset cue; not a clinical or acoustic-quality threshold.
+const MIN_ONSET_MS = 300;
+const SPEECH_MARGIN_DB = 10; // Conservative pilot onset cue, not a QC pass/fail threshold.
+const ONSET_ARM_DELAY_MS = 700; // Ignore transient input changes after recorder startup.
+const BASELINE_MIN_MS = 1000; // Require a meaningful pre-recording reference.
 const BASELINE_WINDOW_MS = 6000;
 const LEVEL_UPDATE_MS = 90;
 
@@ -53,7 +55,7 @@ export default function RecordPage({
   const audioAnalyserRef = useRef(null);
   const audioAnimationRef = useRef(null);
   const audioSamplesRef = useRef(null);
-  const audioMonitorRef = useRef({ noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0, quietHistory: [], frozenNoiseDb: null });
+  const audioMonitorRef = useRef({ noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0, quietHistory: [], frozenNoiseDb: null, baselineReady: false });
   const recordingActiveRef = useRef(false);
   const recordingStartRef = useRef(null);
   const speechOnsetRef = useRef(null);
@@ -239,7 +241,7 @@ export default function RecordPage({
       audioSourceRef.current = source;
       audioAnalyserRef.current = analyser;
       audioSamplesRef.current = new Float32Array(analyser.fftSize);
-      audioMonitorRef.current = { noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0, quietHistory: [], frozenNoiseDb: null };
+      audioMonitorRef.current = { noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0, quietHistory: [], frozenNoiseDb: null, baselineReady: false };
       setAudioMeter({ levelDb: -60, noiseDb: -60, peakDb: -60, ready: false });
 
       function measure(now) {
@@ -267,13 +269,21 @@ export default function RecordPage({
           while (state.quietHistory.length && now - state.quietHistory[0][0] > BASELINE_WINDOW_MS) {
             state.quietHistory.shift();
           }
-          const sorted = state.quietHistory.map((entry) => entry[1]).sort((a, b) => a - b);
-          state.noiseDb = sorted[Math.floor((sorted.length - 1) * 0.2)] ?? db;
+          // Use a recent *median*, not the lowest 20% of a 6s window.
+          // An exceptionally quiet sample can make a +3dB threshold fire on silence.
+          const recent = state.quietHistory.filter((entry) => now - entry[0] <= 2000);
+          const sorted = recent.map((entry) => entry[1]).sort((a, b) => a - b);
+          state.noiseDb = sorted.length ? sorted[Math.floor(sorted.length / 2)] : db;
+          state.baselineReady = recent.length >= 10 && (recent.at(-1)[0] - recent[0][0]) >= BASELINE_MIN_MS;
         }
         const baseline = state.frozenNoiseDb ?? state.noiseDb ?? db;
         const triggerDb = baseline + SPEECH_MARGIN_DB;
+        const isArmed = recordingActiveRef.current
+          && recordingStartRef.current !== null
+          && now - recordingStartRef.current >= ONSET_ARM_DELAY_MS
+          && state.baselineReady && state.frozenNoiseDb !== null;
         if (recordingActiveRef.current && state.onsetAt === null) {
-          if (db >= triggerDb) {
+          if (isArmed && db >= triggerDb) {
             if (state.onsetCandidate === null) state.onsetCandidate = now;
             if (now - state.onsetCandidate >= MIN_ONSET_MS) {
               state.onsetAt = state.onsetCandidate;
@@ -548,7 +558,8 @@ export default function RecordPage({
     audioMonitorRef.current.onsetCandidate = null;
     audioMonitorRef.current.onsetAt = null;
     // Freeze the pre-recording quiet reference for this take.
-    audioMonitorRef.current.frozenNoiseDb = audioMonitorRef.current.noiseDb;
+    audioMonitorRef.current.frozenNoiseDb = audioMonitorRef.current.baselineReady
+      ? audioMonitorRef.current.noiseDb : null;
     recordingActiveRef.current = true;
     setSpeechStarted(false);
     setSpeechElapsed(0);
@@ -826,7 +837,7 @@ export default function RecordPage({
                 <span className="live-qc-meter-label">MIC</span>
                 {new URLSearchParams(window.location.search).has("qcdebug") && (
                   <span className="live-qc-meter-label" style={{ fontSize: 9, whiteSpace: "nowrap" }}>
-                    {audioMeter.levelDb.toFixed(0)} / {audioMeter.noiseDb.toFixed(0)} / Δ{(audioMeter.levelDb - audioMeter.noiseDb).toFixed(1)} dB
+                    {audioMonitorRef.current.baselineReady ? "ready" : "calibrating"} · {audioMeter.levelDb.toFixed(0)} / {audioMeter.noiseDb.toFixed(0)} / Δ{(audioMeter.levelDb - audioMeter.noiseDb).toFixed(1)} dB
                   </span>
                 )}
               </div>
