@@ -20,6 +20,14 @@ function getSupportedMimeType() {
 }
 
 const RECORD_FPS = 30;
+const SPEECH_TARGET_MS = 5000;
+const MIN_ONSET_MS = 160;
+const LEVEL_UPDATE_MS = 90;
+
+// An energy-based onset detector is a lightweight guide, not a clinical VAD.
+function toDb(rms) {
+  return 20 * Math.log10(Math.max(rms, 0.000001));
+}
 
 export default function RecordPage({
   onBack,
@@ -38,6 +46,15 @@ export default function RecordPage({
   const captureAreaRef = useRef(null);
   const cropAnimationRef = useRef(null);
   const canvasStreamRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const audioSourceRef = useRef(null);
+  const audioAnalyserRef = useRef(null);
+  const audioAnimationRef = useRef(null);
+  const audioSamplesRef = useRef(null);
+  const audioMonitorRef = useRef({ noiseDb: -55, onsetCandidate: null, onsetAt: null, lastUpdate: 0 });
+  const recordingActiveRef = useRef(false);
+  const recordingStartRef = useRef(null);
+  const speechOnsetRef = useRef(null);
 
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -47,9 +64,14 @@ export default function RecordPage({
   const [recordingMetadata, setRecordingMetadata] = useState(null);
   const [mimeType, setMimeType] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [audioMeter, setAudioMeter] = useState({ levelDb: -60, noiseDb: -55, peakDb: -60, ready: false });
+  const [speechElapsed, setSpeechElapsed] = useState(0);
+  const [speechStarted, setSpeechStarted] = useState(false);
+  const isSustainedSpeechTask = task.id.startsWith("vowel_");
 
   useEffect(() => {
     return () => {
+      stopAudioMonitor();
       if (cropAnimationRef.current) {
         cancelAnimationFrame(cropAnimationRef.current);
         cropAnimationRef.current = null;
@@ -89,6 +111,10 @@ export default function RecordPage({
     setRecordedUrl(null);
     setRecordedBlob(null);
     setIsRecording(false);
+    recordingActiveRef.current = false;
+    speechOnsetRef.current = null;
+    setSpeechElapsed(0);
+    setSpeechStarted(false);
     setIsSubmitting(false);
     chunksRef.current = [];
 
@@ -132,6 +158,8 @@ export default function RecordPage({
         },
       });
 
+      stopAudioMonitor();
+      if (streamRef.current) streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = stream;
 
       if (videoRef.current) {
@@ -171,12 +199,99 @@ export default function RecordPage({
       });
 
       setIsCameraReady(true);
+      startAudioMonitor(stream);
     } catch (error) {
       console.error("Camera initialization failed:", error);
       setIsCameraReady(false);
     }
   }
 
+
+
+  function stopAudioMonitor() {
+    if (audioAnimationRef.current) cancelAnimationFrame(audioAnimationRef.current);
+    audioAnimationRef.current = null;
+    audioSourceRef.current?.disconnect();
+    audioSourceRef.current = null;
+    audioAnalyserRef.current = null;
+    audioSamplesRef.current = null;
+    if (audioContextRef.current) {
+      // Don't await during unmount; close releases the microphone analysis graph.
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+  }
+
+  function startAudioMonitor(stream) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass || !stream.getAudioTracks().length) return;
+    try {
+      const context = new AudioContextClass();
+      const source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.3;
+      source.connect(analyser); // Never connect to speakers (feedback).
+      audioContextRef.current = context;
+      audioSourceRef.current = source;
+      audioAnalyserRef.current = analyser;
+      audioSamplesRef.current = new Float32Array(analyser.fftSize);
+      audioMonitorRef.current = { noiseDb: -55, onsetCandidate: null, onsetAt: null, lastUpdate: 0 };
+      setAudioMeter({ levelDb: -60, noiseDb: -55, peakDb: -60, ready: false });
+
+      function measure(now) {
+        const analyserNode = audioAnalyserRef.current;
+        if (!analyserNode) return;
+        const samples = audioSamplesRef.current;
+        analyserNode.getFloatTimeDomainData(samples);
+        let energy = 0;
+        let peak = 0;
+        for (let i = 0; i < samples.length; i++) {
+          const v = samples[i];
+          energy += v * v;
+          peak = Math.max(peak, Math.abs(v));
+        }
+        const db = toDb(Math.sqrt(energy / samples.length));
+        const peakDb = toDb(peak);
+        const state = audioMonitorRef.current;
+
+        // Track the quiet baseline only when signal is near it. Slow rise protects
+        // the estimate from speech; a sudden sustained noise change needs recalibration.
+        if (!recordingActiveRef.current || !state.onsetAt) {
+          if (db < state.noiseDb + 7) {
+            const factor = db < state.noiseDb ? 0.045 : 0.004;
+            state.noiseDb += (db - state.noiseDb) * factor;
+          }
+        }
+        const triggerDb = Math.max(-48, state.noiseDb + 12);
+        if (recordingActiveRef.current && state.onsetAt === null) {
+          if (db >= triggerDb) {
+            if (state.onsetCandidate === null) state.onsetCandidate = now;
+            if (now - state.onsetCandidate >= MIN_ONSET_MS) {
+              state.onsetAt = state.onsetCandidate;
+              speechOnsetRef.current = state.onsetAt;
+              setSpeechStarted(true);
+            }
+          } else {
+            state.onsetCandidate = null;
+          }
+        }
+        if (now - state.lastUpdate >= LEVEL_UPDATE_MS) {
+          if (recordingActiveRef.current && state.onsetAt !== null && isSustainedSpeechTask) {
+            setSpeechElapsed(Math.min(SPEECH_TARGET_MS, now - state.onsetAt));
+          }
+          state.lastUpdate = now;
+          setAudioMeter({ levelDb: db, noiseDb: state.noiseDb, peakDb, ready: true });
+        }
+        audioAnimationRef.current = requestAnimationFrame(measure);
+      }
+      audioAnimationRef.current = requestAnimationFrame(measure);
+      context.resume().catch(() => {});
+    } catch (error) {
+      console.warn("Audio meter could not start:", error);
+      stopAudioMonitor();
+    }
+  }
 
   function stopCropDrawing() {
     if (cropAnimationRef.current) {
@@ -407,11 +522,26 @@ export default function RecordPage({
     recorder.onerror = (event) => {
       console.error("Recording failed:", event.error || event);
       stopCropDrawing();
+      recordingActiveRef.current = false;
       setIsRecording(false);
       alert("녹화 중 오류가 발생했습니다.");
     };
 
-    recorder.start(1000);
+    try {
+      audioContextRef.current?.resume().catch(() => {});
+      recorder.start(1000);
+    } catch (error) {
+      stopCropDrawing();
+      alert("녹화를 시작하지 못했습니다.");
+      return;
+    }
+    recordingStartRef.current = performance.now();
+    speechOnsetRef.current = null;
+    audioMonitorRef.current.onsetCandidate = null;
+    audioMonitorRef.current.onsetAt = null;
+    recordingActiveRef.current = true;
+    setSpeechStarted(false);
+    setSpeechElapsed(0);
     setIsRecording(true);
   }
 
@@ -473,6 +603,18 @@ export default function RecordPage({
       recorderRef.current.stop();
     }
 
+    recordingActiveRef.current = false;
+    const speechOnsetMs = speechOnsetRef.current === null || recordingStartRef.current === null
+      ? null : Math.max(0, Math.round(speechOnsetRef.current - recordingStartRef.current));
+    setRecordingMetadata((prev) => ({
+      ...(prev || {}),
+      speechTiming: {
+        method: "adaptive-energy-onset",
+        speechOnsetMs,
+        targetDurationMs: isSustainedSpeechTask ? SPEECH_TARGET_MS : null,
+        note: "Approximate audio-energy onset; manual review recommended",
+      },
+    }));
     setIsRecording(false);
   }
 
@@ -660,6 +802,22 @@ export default function RecordPage({
             </div>
           )}
 
+          {isRecording && (
+            <div className="live-qc-overlay" aria-label="녹음 상태 표시">
+              <div className="live-qc-meter" aria-label="마이크 입력 레벨">
+                <div className="live-qc-meter-track">
+                  <div
+                    className={`live-qc-meter-fill ${audioMeter.peakDb > -3 ? "is-clipping" : ""}`}
+                    style={{ height: `${Math.max(0, Math.min(100, (audioMeter.levelDb + 60) / 60 * 100))}%` }}
+                  />
+                  <span className="live-qc-noise-line" style={{ bottom: `${Math.max(0, Math.min(100, (audioMeter.noiseDb + 60) / 60 * 100))}%` }} />
+                  <span className="live-qc-target-line" style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(-48, audioMeter.noiseDb + 12) + 60) / 60 * 100))}%` }} />
+                </div>
+                <span className="live-qc-meter-label">MIC</span>
+              </div>
+            </div>
+          )}
+
           {isSubmitting && (
             <div className="upload-overlay">
               파일 전송 중…
@@ -715,6 +873,18 @@ export default function RecordPage({
         </div>
 
 
+
+        {isRecording && isSustainedSpeechTask && (
+          <div className="speech-time-panel" aria-label="발화 시간 진행률">
+            <div className="speech-time-head">
+              <span>{!speechStarted ? "발화 대기" : speechElapsed >= SPEECH_TARGET_MS ? "5초 완료" : "발화 유지"}</span>
+              <span>{(speechElapsed / 1000).toFixed(1)} / 5.0s</span>
+            </div>
+            <div className="speech-time-track">
+              <div className="speech-time-fill" style={{ width: `${speechElapsed / SPEECH_TARGET_MS * 100}%` }} />
+            </div>
+          </div>
+        )}
 
         <div className="button-bar">
           {!isCameraReady ? (

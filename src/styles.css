@@ -912,3 +912,19 @@ button:disabled {
 .camera-video-live {
   transform: scaleX(-1);
 }
+
+
+/* Live QC overlays are outside the recording canvas, so they never enter saved video. */
+.live-qc-overlay { position:absolute; z-index:15; right:10px; top:50%; transform:translateY(-50%); pointer-events:none; }
+.live-qc-meter { display:flex; flex-direction:column; align-items:center; gap:5px; }
+.live-qc-meter-track { position:relative; width:15px; height:108px; overflow:hidden; border:1px solid rgba(255,255,255,.55); border-radius:9px; background:rgba(10,20,32,.65); }
+.live-qc-meter-fill { position:absolute; bottom:0; left:0; right:0; background:#39c39a; transition:height 90ms linear; border-radius:8px; }
+.live-qc-meter-fill.is-clipping { background:#f36b65; }
+.live-qc-noise-line, .live-qc-target-line { position:absolute; left:0; right:0; height:2px; }
+.live-qc-noise-line { background:#83bff5; }
+.live-qc-target-line { background:#f9cb63; }
+.live-qc-meter-label { color:white; font:700 9px/1 sans-serif; text-shadow:0 1px 3px #111; }
+.speech-time-panel { background:#111923; color:#fff; flex:0 0 auto; padding:8px 12px 9px; }
+.speech-time-head { display:flex; justify-content:space-between; gap:12px; margin-bottom:5px; font-size:12px; font-weight:650; font-variant-numeric:tabular-nums; }
+.speech-time-track { height:9px; border-radius:7px; overflow:hidden; background:#435060; }
+.speech-time-fill { height:100%; border-radius:7px; background:#3bcca3; transition:width 80ms linear; }
