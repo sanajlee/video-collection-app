@@ -22,7 +22,8 @@ function getSupportedMimeType() {
 const RECORD_FPS = 30;
 const SPEECH_TARGET_MS = 5000;
 const MIN_ONSET_MS = 120;
-const SPEECH_MARGIN_DB = 6; // Pilot value; not a clinical voice threshold.
+const SPEECH_MARGIN_DB = 3; // Pilot onset cue; not a clinical or acoustic-quality threshold.
+const BASELINE_WINDOW_MS = 6000;
 const LEVEL_UPDATE_MS = 90;
 
 // An energy-based onset detector is a lightweight guide, not a clinical VAD.
@@ -52,7 +53,7 @@ export default function RecordPage({
   const audioAnalyserRef = useRef(null);
   const audioAnimationRef = useRef(null);
   const audioSamplesRef = useRef(null);
-  const audioMonitorRef = useRef({ noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0 });
+  const audioMonitorRef = useRef({ noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0, quietHistory: [], frozenNoiseDb: null });
   const recordingActiveRef = useRef(false);
   const recordingStartRef = useRef(null);
   const speechOnsetRef = useRef(null);
@@ -113,6 +114,7 @@ export default function RecordPage({
     setRecordedBlob(null);
     setIsRecording(false);
     recordingActiveRef.current = false;
+    audioMonitorRef.current.frozenNoiseDb = null;
     speechOnsetRef.current = null;
     setSpeechElapsed(0);
     setSpeechStarted(false);
@@ -237,7 +239,7 @@ export default function RecordPage({
       audioSourceRef.current = source;
       audioAnalyserRef.current = analyser;
       audioSamplesRef.current = new Float32Array(analyser.fftSize);
-      audioMonitorRef.current = { noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0 };
+      audioMonitorRef.current = { noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0, quietHistory: [], frozenNoiseDb: null };
       setAudioMeter({ levelDb: -60, noiseDb: -60, peakDb: -60, ready: false });
 
       function measure(now) {
@@ -256,18 +258,20 @@ export default function RecordPage({
         const peakDb = toDb(peak);
         const state = audioMonitorRef.current;
 
-        // Track the quiet baseline only when signal is near it. Slow rise protects
-        // the estimate from speech; a sudden sustained noise change needs recalibration.
-        // Initialize from actual microphone samples rather than assuming a fixed
-        // -55 dBFS noise floor. Absolute digital levels vary among phones.
-        if (state.noiseDb === null) state.noiseDb = db;
-        if (!recordingActiveRef.current || state.onsetAt === null) {
-          if (db < state.noiseDb + 7) {
-            const factor = db < state.noiseDb ? 0.12 : 0.005;
-            state.noiseDb += (db - state.noiseDb) * factor;
+        // Learn a quiet baseline from recent *pre-recording* input only.
+        // Using a lower percentile avoids treating loud setup speech as room noise.
+        // Freeze at recording start, so the noise line cannot chase a patient's voice.
+        if (!recordingActiveRef.current) {
+          state.quietHistory.push([now, db]);
+          if (state.quietHistory.length > 360) state.quietHistory.shift();
+          while (state.quietHistory.length && now - state.quietHistory[0][0] > BASELINE_WINDOW_MS) {
+            state.quietHistory.shift();
           }
+          const sorted = state.quietHistory.map((entry) => entry[1]).sort((a, b) => a - b);
+          state.noiseDb = sorted[Math.floor((sorted.length - 1) * 0.2)] ?? db;
         }
-        const triggerDb = state.noiseDb + SPEECH_MARGIN_DB;
+        const baseline = state.frozenNoiseDb ?? state.noiseDb ?? db;
+        const triggerDb = baseline + SPEECH_MARGIN_DB;
         if (recordingActiveRef.current && state.onsetAt === null) {
           if (db >= triggerDb) {
             if (state.onsetCandidate === null) state.onsetCandidate = now;
@@ -285,7 +289,7 @@ export default function RecordPage({
             setSpeechElapsed(Math.min(SPEECH_TARGET_MS, now - state.onsetAt));
           }
           state.lastUpdate = now;
-          setAudioMeter({ levelDb: db, noiseDb: state.noiseDb, peakDb, ready: true });
+          setAudioMeter({ levelDb: db, noiseDb: baseline, peakDb, ready: true });
         }
         audioAnimationRef.current = requestAnimationFrame(measure);
       }
@@ -543,6 +547,8 @@ export default function RecordPage({
     speechOnsetRef.current = null;
     audioMonitorRef.current.onsetCandidate = null;
     audioMonitorRef.current.onsetAt = null;
+    // Freeze the pre-recording quiet reference for this take.
+    audioMonitorRef.current.frozenNoiseDb = audioMonitorRef.current.noiseDb;
     recordingActiveRef.current = true;
     setSpeechStarted(false);
     setSpeechElapsed(0);
@@ -820,7 +826,7 @@ export default function RecordPage({
                 <span className="live-qc-meter-label">MIC</span>
                 {new URLSearchParams(window.location.search).has("qcdebug") && (
                   <span className="live-qc-meter-label" style={{ fontSize: 9, whiteSpace: "nowrap" }}>
-                    {audioMeter.levelDb.toFixed(0)} / {audioMeter.noiseDb.toFixed(0)} dBFS
+                    {audioMeter.levelDb.toFixed(0)} / {audioMeter.noiseDb.toFixed(0)} / Δ{(audioMeter.levelDb - audioMeter.noiseDb).toFixed(1)} dB
                   </span>
                 )}
               </div>
