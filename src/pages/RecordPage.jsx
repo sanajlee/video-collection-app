@@ -20,6 +20,7 @@ function getSupportedMimeType() {
 }
 
 const RECORD_FPS = 30;
+const MAX_OUTPUT_WIDTH = 1280;
 const SPEECH_TARGET_MS = 5000;
 const MIN_ONSET_MS = 300;
 const SPEECH_MARGIN_DB = 10; // Conservative pilot onset cue, not a QC pass/fail threshold.
@@ -412,8 +413,24 @@ export default function RecordPage({
       Math.floor(cropHeight / 2) * 2
     );
 
-    canvas.width = cropWidth;
-    canvas.height = cropHeight;
+    // 전송량을 줄이기 위해 저장용 canvas는 최대 1280px 폭으로 제한한다.
+    // crop 비율은 그대로 유지하고, 원본보다 작은 경우에는 업스케일하지 않는다.
+    const outputScale = Math.min(
+      1,
+      MAX_OUTPUT_WIDTH / cropWidth
+    );
+
+    const outputWidth = Math.max(
+      2,
+      Math.floor((cropWidth * outputScale) / 2) * 2
+    );
+    const outputHeight = Math.max(
+      2,
+      Math.floor((cropHeight * outputScale) / 2) * 2
+    );
+
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
 
     const ctx = canvas.getContext("2d", {
       alpha: false,
@@ -434,8 +451,8 @@ export default function RecordPage({
         cropHeight,
         0,
         0,
-        cropWidth,
-        cropHeight
+        outputWidth,
+        outputHeight
       );
 
       cropAnimationRef.current = requestAnimationFrame(
@@ -457,7 +474,7 @@ export default function RecordPage({
     ]);
 
     const options = {
-      videoBitsPerSecond: 5_000_000,
+      videoBitsPerSecond: 3_000_000,
       audioBitsPerSecond: 128_000,
     };
 
@@ -494,8 +511,9 @@ export default function RecordPage({
         sourceY,
         cropWidth,
         cropHeight,
-        outputWidth: cropWidth,
-        outputHeight: cropHeight,
+        outputWidth,
+        outputHeight,
+        outputScale,
         displayAspectRatio: frameAspect,
       },
     }));
