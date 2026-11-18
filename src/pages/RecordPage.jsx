@@ -21,7 +21,8 @@ function getSupportedMimeType() {
 
 const RECORD_FPS = 30;
 const SPEECH_TARGET_MS = 5000;
-const MIN_ONSET_MS = 160;
+const MIN_ONSET_MS = 120;
+const SPEECH_MARGIN_DB = 6; // Pilot value; not a clinical voice threshold.
 const LEVEL_UPDATE_MS = 90;
 
 // An energy-based onset detector is a lightweight guide, not a clinical VAD.
@@ -51,7 +52,7 @@ export default function RecordPage({
   const audioAnalyserRef = useRef(null);
   const audioAnimationRef = useRef(null);
   const audioSamplesRef = useRef(null);
-  const audioMonitorRef = useRef({ noiseDb: -55, onsetCandidate: null, onsetAt: null, lastUpdate: 0 });
+  const audioMonitorRef = useRef({ noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0 });
   const recordingActiveRef = useRef(false);
   const recordingStartRef = useRef(null);
   const speechOnsetRef = useRef(null);
@@ -64,7 +65,7 @@ export default function RecordPage({
   const [recordingMetadata, setRecordingMetadata] = useState(null);
   const [mimeType, setMimeType] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [audioMeter, setAudioMeter] = useState({ levelDb: -60, noiseDb: -55, peakDb: -60, ready: false });
+  const [audioMeter, setAudioMeter] = useState({ levelDb: -60, noiseDb: -60, peakDb: -60, ready: false });
   const [speechElapsed, setSpeechElapsed] = useState(0);
   const [speechStarted, setSpeechStarted] = useState(false);
   const isSustainedSpeechTask = task.id.startsWith("vowel_");
@@ -236,8 +237,8 @@ export default function RecordPage({
       audioSourceRef.current = source;
       audioAnalyserRef.current = analyser;
       audioSamplesRef.current = new Float32Array(analyser.fftSize);
-      audioMonitorRef.current = { noiseDb: -55, onsetCandidate: null, onsetAt: null, lastUpdate: 0 };
-      setAudioMeter({ levelDb: -60, noiseDb: -55, peakDb: -60, ready: false });
+      audioMonitorRef.current = { noiseDb: null, onsetCandidate: null, onsetAt: null, lastUpdate: 0 };
+      setAudioMeter({ levelDb: -60, noiseDb: -60, peakDb: -60, ready: false });
 
       function measure(now) {
         const analyserNode = audioAnalyserRef.current;
@@ -257,13 +258,16 @@ export default function RecordPage({
 
         // Track the quiet baseline only when signal is near it. Slow rise protects
         // the estimate from speech; a sudden sustained noise change needs recalibration.
-        if (!recordingActiveRef.current || !state.onsetAt) {
+        // Initialize from actual microphone samples rather than assuming a fixed
+        // -55 dBFS noise floor. Absolute digital levels vary among phones.
+        if (state.noiseDb === null) state.noiseDb = db;
+        if (!recordingActiveRef.current || state.onsetAt === null) {
           if (db < state.noiseDb + 7) {
-            const factor = db < state.noiseDb ? 0.045 : 0.004;
+            const factor = db < state.noiseDb ? 0.12 : 0.005;
             state.noiseDb += (db - state.noiseDb) * factor;
           }
         }
-        const triggerDb = Math.max(-48, state.noiseDb + 12);
+        const triggerDb = state.noiseDb + SPEECH_MARGIN_DB;
         if (recordingActiveRef.current && state.onsetAt === null) {
           if (db >= triggerDb) {
             if (state.onsetCandidate === null) state.onsetCandidate = now;
@@ -808,12 +812,17 @@ export default function RecordPage({
                 <div className="live-qc-meter-track">
                   <div
                     className={`live-qc-meter-fill ${audioMeter.peakDb > -3 ? "is-clipping" : ""}`}
-                    style={{ height: `${Math.max(0, Math.min(100, (audioMeter.levelDb + 60) / 60 * 100))}%` }}
+                    style={{ height: `${Math.max(0, Math.min(100, (audioMeter.levelDb - audioMeter.noiseDb + 6) / 36 * 100))}%` }}
                   />
-                  <span className="live-qc-noise-line" style={{ bottom: `${Math.max(0, Math.min(100, (audioMeter.noiseDb + 60) / 60 * 100))}%` }} />
-                  <span className="live-qc-target-line" style={{ bottom: `${Math.max(0, Math.min(100, (Math.max(-48, audioMeter.noiseDb + 12) + 60) / 60 * 100))}%` }} />
+                  <span className="live-qc-noise-line" style={{ bottom: `${6 / 36 * 100}%` }} />
+                  <span className="live-qc-target-line" style={{ bottom: `${(6 + SPEECH_MARGIN_DB) / 36 * 100}%` }} />
                 </div>
                 <span className="live-qc-meter-label">MIC</span>
+                {new URLSearchParams(window.location.search).has("qcdebug") && (
+                  <span className="live-qc-meter-label" style={{ fontSize: 9, whiteSpace: "nowrap" }}>
+                    {audioMeter.levelDb.toFixed(0)} / {audioMeter.noiseDb.toFixed(0)} dBFS
+                  </span>
+                )}
               </div>
             </div>
           )}
